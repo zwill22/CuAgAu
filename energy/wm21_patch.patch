@@ -1,0 +1,436 @@
+Index: src/xc/libxc_interface.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/xc/libxc_interface.cpp b/src/xc/libxc_interface.cpp
+--- a/src/xc/libxc_interface.cpp	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/src/xc/libxc_interface.cpp	(date 1635085999394)
+@@ -114,11 +114,6 @@
+   __builtin_unreachable();
+ }
+ 
+-/// The B97 parameter data structure in libxc
+-typedef struct {
+-  double c_x[5], c_ss[5], c_ab[5];
+-} gga_xc_b97_params;
+-
+ /// wB97X-D3 parameters from https://doi.org/10.1021/ct300715s in libxc format
+ static const gga_xc_b97_params par_wb97x_d3 = {
+     {0.804272, 0.698900, 0.508940, -3.744903, 10.060790},    // x, sigma
+@@ -138,7 +133,8 @@
+ /// Parameters for \p xc_functional are obtained from to_libxc_func_id().
+ /// LibXcFunctional::WB97XD3 is explicitly modified here.
+ xc_func_type
+-xc_func_init(const LibXcFunctional xc_functional, int nspin) {
++xc_func_init(const LibXcFunctional xc_functional, int nspin,
++             const CustomXCParameters & params) {
+   xc_func_type func;
+   xc_func_init(&func, to_libxc_func_id(xc_functional), nspin);
+ 
+@@ -168,13 +164,24 @@
+ 
+     case (LibXcFunctional::B97_3C): {
+       // this construct is used in libxc 4.2.3
+-      gga_xc_b97_params * params = static_cast<gga_xc_b97_params *>(func.params);
++      auto * params = static_cast<gga_xc_b97_params *>(func.params);
+       std::memcpy(params, &par_b97_3c, sizeof(gga_xc_b97_params));
+       break;
+     }
+ 
+     case (LibXcFunctional::CAMB3LYP):
++      break;
+     case (LibXcFunctional::WB97X):
++
++      if (params.omega) func.cam_omega = params.omega.value();
++      if (params.beta) func.cam_beta = - params.beta.value();
++      if (params.alpha) func.cam_alpha = params.alpha.value() - func.cam_beta;
++      if (params.b97_parameters) {
++
++        auto * original_params = static_cast<gga_xc_b97_params *>(func.params);
++        std::memcpy(original_params, params.b97_parameters.value().get(),
++                    sizeof(gga_xc_b97_params));
++      }
+       break;
+     case (LibXcFunctional::WB97XD3): {
+       // wB97X-D3 parameters from https://doi.org/10.1021/ct300715s
+@@ -182,7 +189,7 @@
+       func.cam_omega = 0.25;
+       func.cam_beta = -(1.0 - 1.95728e-01);
+       // this construct is used in libxc 4.2.3
+-      gga_xc_b97_params * params = static_cast<gga_xc_b97_params *>(func.params);
++      auto * params = static_cast<gga_xc_b97_params *>(func.params);
+       std::memcpy(params, &par_wb97x_d3, sizeof(gga_xc_b97_params));
+       break;
+     }
+@@ -231,15 +238,17 @@
+   LibXcFunctional from_func;
+   int from_nspin;
+   xc_func_type func;
++  CustomXCParameters parameters;
+   bool allocated = false;
+ 
+ public:
+   LibXcFuncTypeImpl() {}
+ 
+-  LibXcFuncTypeImpl(LibXcFunctional xc_functional, int nspin)
++  LibXcFuncTypeImpl(LibXcFunctional xc_functional, int nspin,
++                    const CustomXCParameters & params)
+     : from_func{xc_functional}
+     , from_nspin{nspin}
+-    , func{xc_func_init(from_func, nspin)}
++    , func{xc_func_init(from_func, nspin, params)}
+     , allocated{true} {}
+ 
+   ~LibXcFuncTypeImpl() {
+@@ -255,7 +264,7 @@
+     from_nspin = rhs.from_nspin;
+     allocated = false;
+     if (rhs.allocated) {
+-      func = xc_func_init(from_func, from_nspin);
++      func = xc_func_init(from_func, from_nspin, rhs.parameters);
+       allocated = true;
+     }
+   }
+@@ -271,7 +280,8 @@
+     from_func = rhs.from_func;
+     from_nspin = rhs.from_nspin;
+     if (rhs.allocated) {
+-      func = xc_func_init(from_func, from_nspin);
++      func = xc_func_init(from_func, from_nspin, rhs.parameters);
++      parameters = rhs.parameters;
+       allocated = true;
+     }
+ 
+@@ -283,6 +293,7 @@
+     from_func = rhs.from_func;
+     from_nspin = rhs.from_nspin;
+     func = rhs.func;
++    parameters = rhs.parameters;
+     allocated = rhs.allocated;
+     rhs.allocated = false;
+   }
+@@ -366,9 +377,12 @@
+   }
+ };
+ 
+-LibXcFuncType::LibXcFuncType(LibXcFunctional xc_functional)
+-  : func_open(std::make_unique<LibXcFuncTypeImpl>(xc_functional, XC_POLARIZED))
+-  , func_closed(std::make_unique<LibXcFuncTypeImpl>(xc_functional, XC_UNPOLARIZED)) {}
++LibXcFuncType::LibXcFuncType(LibXcFunctional xc_functional,
++                             const CustomXCParameters & params) :
++  func_open(std::make_unique<LibXcFuncTypeImpl>(
++      xc_functional, XC_POLARIZED, params)),
++  func_closed(std::make_unique<LibXcFuncTypeImpl>(
++      xc_functional, XC_UNPOLARIZED, params)) {}
+ 
+ LibXcFuncType::LibXcFuncType()
+   : func_open(std::make_unique<LibXcFuncTypeImpl>())
+Index: data/documentation.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/data/documentation.xml b/data/documentation.xml
+--- a/data/documentation.xml	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/data/documentation.xml	(date 1635085436650)
+@@ -2276,6 +2276,7 @@
+ 
+     <subcommand>structure</subcommand>
+ 
++    <subcommand>custom_xc_parameters</subcommand>
+     <subcommand>uw12</subcommand>
+     <subcommand>mp2</subcommand>
+ 
+@@ -2705,6 +2706,92 @@
+       </type>
+       <default></default>
+     </option>
++
++  </command>
++
++  <command>
++    <name>custom_xc_parameters</name>
++    <doc>
++      Specify custom parameters for certain xc functionals.
++    </doc>
++
++    <option>
++      <name>omega</name>
++      <type>
++        <real/>
++      </type>
++      <doc>
++        Value of range separation parameter \(\omega\) for range separated hybrid
++        functionals defined by the splitting formula:
++        \[
++        \frac{1}{r_{12}} = \frac{\mathrm{erf} ( \omega r_{12} )}{r_{12}} +
++        \frac{\mathrm{erfc} ( \omega r_{12} )}{r_{12}}
++        \]
++        or more generally for additional parameters \(\alpha\) and \(\beta\),
++        specified using <keyword>alpha</keyword> and <keyword>beta</keyword>:
++        \[
++        \frac{1}{r_{12}} = \frac{\alpha + \beta \mathrm{erf} (
++        \omega r_{12} )}{r_{12}} +
++        \frac{1 - [ \alpha + \beta \mathrm{erf} ( \omega r_{12} )]}{r_{12}}
++        \]
++        See <a href="https://doi.org/10.1016/j.cplett.2004.06.011">this paper</a>
++        for a more detailed explanation.
++      </doc>
++    </option>
++
++    <option>
++      <name>alpha</name>
++      <type>
++        <real/>
++      </type>
++      <doc>
++        Parameter \(\alpha\) specifying the amount of exact exchange at short range
++        for RSH functionals. See <keyword>omega</keyword> for further explanation.
++      </doc>
++    </option>
++
++    <option>
++      <name>beta</name>
++      <type>
++        <real/>
++      </type>
++      <doc>
++        Additional amount of exact exchange \(\beta\) at long range for RSH
++        functionals. See <keyword>omega</keyword> for further explanation.
++      </doc>
++    </option>
++
++    <option>
++      <name>b97_parameters</name>
++      <doc>
++        B97 functional parameters.
++      </doc>
++      <type>
++        <tuple>
++          <tuple>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++          </tuple>
++          <tuple>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++          </tuple>
++          <tuple>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++            <real/>
++          </tuple>
++        </tuple>
++      </type>
++    </option>
+ 
+   </command>
+ 
+Index: src/xc/determine_functional.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/xc/determine_functional.cpp b/src/xc/determine_functional.cpp
+--- a/src/xc/determine_functional.cpp	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/src/xc/determine_functional.cpp	(date 1635085778230)
+@@ -38,6 +38,10 @@
+   if (input.contains("xc_mix")) {
+     std::stringstream xc_description;
+     bool first = true;
++    if (input.contains("custom_xc_parameters")) {
++      throw EntosError(
++          "custom xc parameters not implemented for mixed functionals");
++    }
+     for (const auto & xc_mix : input["xc_mix"]) {
+       xc::FunctionalDef this_func = xc_id(xc_mix[1].get<std::string>());
+       if (this_func.empty()) {
+@@ -74,7 +78,11 @@
+     if (xc == "none") {
+       throw EntosError("an exchange-correlation functional must be specified");
+     }
+-    functional = xc::xc_id(xc);
++
++    const auto params = get_custom_xc_parameters(input);
++
++    functional = xc::xc_id(xc, params);
++
+     if (functional.empty())
+       throw entos::EntosError(std::string("xc functional '") + xc + "' not found");
+     if (print_name)
+Index: src/xc/data_objects.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/xc/data_objects.h b/src/xc/data_objects.h
+--- a/src/xc/data_objects.h	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/src/xc/data_objects.h	(date 1635085606541)
+@@ -8,6 +8,7 @@
+ #include "libxc_interface.h"
+ 
+ #include "./entos_error.h"    // entos::EntosError
++#include "input/input_tree_fwd.h"
+ #include "scf/data_objects.h" // DensityMatrix, FockMatrixAndEnergy
+ 
+ namespace entos {
+@@ -38,6 +39,8 @@
+     : entos::EntosError("cannot parse XC string: " + what) {}
+ };
+ 
++xc::CustomXCParameters get_custom_xc_parameters(const input::InputTree & input);
++
+ /// \brief Interpret a functional string as a list of functionals
+ ///
+ /// Multiple functionals can be specified with different prefactors (see
+@@ -45,8 +48,8 @@
+ ///
+ /// If no prefactor is specified, it is assumed to be 1.0, so `0.3 LDA B3LYP`
+ /// is equivalent to `0.3 LDA 1.0 B3LYP`.
+-FunctionalDef
+-xc_id(std::string xc_string);
++FunctionalDef xc_id(std::string xc_string,
++      const xc::CustomXCParameters & params = {});
+ 
+ using scf::DensityMatrix;
+ using scf::FockMatrix;
+Index: src/xc/data_objects.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/xc/data_objects.cpp b/src/xc/data_objects.cpp
+--- a/src/xc/data_objects.cpp	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/src/xc/data_objects.cpp	(date 1635085542031)
+@@ -4,6 +4,8 @@
+ 
+ #include <boost/algorithm/string.hpp>
+ 
++#include "input/input_tree.h"
++
+ #include "functionals.h"     // Functional
+ #include "libxc_interface.h" // is_gga
+ 
+@@ -20,8 +22,55 @@
+   return false;
+ }
+ 
+-FunctionalDef
+-xc_id(std::string xc_string) {
++xc::CustomXCParameters get_custom_xc_parameters(const input::InputTree & input) {
++  if (input.contains("custom_xc_parameters")) {
++    const auto custom_params = input["custom_xc_parameters"];
++
++    xc::CustomXCParameters params;
++
++    if (custom_params.contains("alpha")) {
++      params.alpha = custom_params["alpha"].get<double>();
++    }
++    if (custom_params.contains("beta")) {
++      params.beta = custom_params["beta"].get<double>();
++    }
++    if (custom_params.contains("omega")) {
++      params.omega = custom_params["omega"].get<double>();
++    }
++
++    if (custom_params.contains("b97_parameters")) {
++
++      std::vector<std::array<double, 5>> b97_params;
++      for (const auto & b97_param_set : custom_params["b97_parameters"]) {
++        std::array<double, 5> out;
++        const auto vec = b97_param_set.get<std::vector<double>>();
++        assert(vec.size() == 5);
++
++        std::copy_n(vec.begin(), 5, out.begin());
++
++        b97_params.push_back(out);
++      }
++
++      gga_xc_b97_params b97_parameters;
++
++      std::copy_n(b97_params[0].begin(), 5, std::begin(b97_parameters.c_x));
++      std::copy_n(b97_params[1].begin(), 5, std::begin(b97_parameters.c_ss));
++      std::copy_n(b97_params[2].begin(), 5, std::begin(b97_parameters.c_ab));
++
++      params.b97_parameters = std::make_shared<gga_xc_b97_params>(b97_parameters);
++    }
++
++    return params;
++  } else {
++    return {};
++  }
++}
++
++
++FunctionalDef xc_id(
++    std::string xc_string,
++    const xc::CustomXCParameters & params
++) {
+ 
+   const auto entos_func =
+       resolve<XcFunctional>(boost::algorithm::to_lower_copy(xc_string));
+@@ -31,7 +80,7 @@
+   FunctionalDef functional;
+ 
+   for (const auto libxc_func : libxc_funcs) {
+-    functional.push_back({LibXcFuncType(libxc_func), 1.0});
++    functional.push_back({LibXcFuncType(libxc_func, params), 1.0});
+   }
+ 
+   return functional;
+Index: src/xc/libxc_interface.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/xc/libxc_interface.h b/src/xc/libxc_interface.h
+--- a/src/xc/libxc_interface.h	(revision 0eb11e21bbb7fe24974ac1a9487a93ce7f6be476)
++++ b/src/xc/libxc_interface.h	(date 1635086049604)
+@@ -5,6 +5,8 @@
+ #include <memory>
+ #include <vector>
+ 
++#include "input/input_tree_fwd.h"
++
+ namespace entos {
+ namespace xc {
+ 
+@@ -92,6 +94,18 @@
+   DHSpinParameters();
+ };
+ 
++/// The B97 parameter data structure in libxc
++typedef struct {
++  double c_x[5], c_ss[5], c_ab[5];
++} gga_xc_b97_params;
++
++struct CustomXCParameters {
++  std::optional<double> alpha = std::nullopt;
++  std::optional<double> beta = std::nullopt;
++  std::optional<double> omega = std::nullopt;
++  std::optional<std::shared_ptr<gga_xc_b97_params>> b97_parameters = std::nullopt;
++};
++
+ /// \brief Firewall class around libxc's c-style struct xc_func_type
+ ///
+ /// On construction it builds both the Open and Closed shell versions of the
+@@ -122,7 +136,8 @@
+   static constexpr bool Closed = false;
+ 
+   /// \brief Construct a libxc functional from \p xc_functional
+-  LibXcFuncType(LibXcFunctional xc_functional);
++  LibXcFuncType(LibXcFunctional xc_functional,
++                const CustomXCParameters & params);
+ 
+   // Need to define all of the special member constructor due to std::unique_ptr
+ 
+
