@@ -20,6 +20,8 @@ for folder in */; do
                         else
 				echo "${file} - Z axis alignment issue";
 			fi
+		elif `grep -q "Psi4 encountered an error" ${file%.in}.out`; then
+			echo "${file} - Psi4 error";
 		elif `grep -q "Error: largest angular momentum" ${file%.in}.out`; then
 			echo "${file} - Angular momentum error";
 		else
