@@ -10,8 +10,14 @@ for folder in */; do
 			true;
 		elif `grep -q 'ORCA TERMINATED NORMALLY' ${file%.in}.out`; then
 			 true;
+		elif `grep -q 'Psi4 exiting successfully' ${file%.in}.out`; then
+			 true;
 		elif `grep -q -i "SCF not converged" ${file%.in}.out`; then
 			echo "${file} - SCF not converged";
+		elif `grep -q -i "could not converge SCF" ${file%.in}.out`; then
+			echo "${file} - SCF not converged";
+		elif `grep -q -i "could not converge geometry opt" ${file%.in}.out`; then
+			echo "${file} - Geometry not converged";
 		elif `grep -q "doesn't contain an entry for element" ${file%.in}.out`; then
 			echo "${file} - Incomplete basis set";
 		elif `grep -q "not aligned to z axis" ${file%.in}.out`; then
