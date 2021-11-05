@@ -1,5 +1,3 @@
-#!/sw/lang/anaconda.3.8-2020.07/bin/python
-
 import os
 import sys
 import subprocess
@@ -41,36 +39,27 @@ cd {4}
 """.format(filename, time, ncpu, mem, path)
 
 
-def get_output_bc4(filename, time, ncpu, path, mem):
+def get_output_bc4(filename, time, ncpu, path, mem=120):
     return """#!/bin/bash
 #SBATCH -N 1
 #SBATCH --tasks-per-node={0}
 #SBATCH --time={1}:00:00
 #SBATCH --error="%x.e%j"
 #SBATCH --output="%x.o%j"
-#SBATCH --jobname="{2}"
+#SBATCH --job-name="{2}"
+#SBATCH --mem={4}G
 
 module load OpenMPI/3.0.0-GCC-7.2.0-2.29 
-module load apps/orca/5.0.1
+module load apps/orca/4.2.0
  
 export RSH_COMMAND="/usr/bin/ssh -x"
 
 cd {3}
 
-cp "{2}.in" ${{TMPDIR}}
-cp "{2}.xyz" ${{TMPDIR}}
+echo ${{SLURM_NODELIST}} > {2}.nodes
 
-echo ${{SLURM_NODELIST}} > ${{TMPDIR}}/{2}.nodes
-
-cd ${{TMPDIR}}
-
-$((which orca)) "{2}.in" &> "{2}.out"
-
-cp "{2}.out" {3}
-cp "{2}.xyz" {3}
-
-cd {3}
-""".format(ncpu, time, filename, path)
+$(which orca) "{2}.in" &> "{2}.out"
+""".format(ncpu, time, filename, path, mem)
  
 computer = "BC4"
 
@@ -88,7 +77,7 @@ for file in os.listdir():
     if computer == "BP1":
         output = get_output_bp1(filename, time, ncpu, path)
     elif computer == "BC4":
-        output = get_outpute_bc4(filename, time, ncpu, path)
+        output = get_output_bc4(filename, time, ncpu, path)
 
     subfile = filename + '.sub'
 
