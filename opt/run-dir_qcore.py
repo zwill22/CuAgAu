@@ -9,13 +9,27 @@ files = sys.argv[4]
 
 path = os.path.abspath(wd)
 
-queue = 'slurm'
-#queue = 'pbs'
-
-workdir = True
-
-mem = 120
 himem = False
+
+hostname = os.uname().nodename
+if "newblue" in hostname:
+    queue = 'pbs'
+    mem = 240 if himem else 64
+    workdir = True
+elif 'bc4' in hostname:
+    queue = 'slurm'
+    mem = 480 if himem else 120
+    workdir = True
+elif 'bp1' in hostname:
+    queue = 'slurm'
+    mem = 320 if himem else 150
+    workdir = False
+else:
+    raise ValueError("Unable to determine identity of host computer")
+
+
+if files != 'files':
+    raise ValueError('only files supported')
 
 if files != 'files':
     raise ValueError('only files supported')
@@ -55,12 +69,13 @@ for file in os.listdir():
     output += """
 
 source ${{HOME}}/.bashrc
+
+cd {4}
 """
 
     if not workdir:
         output += """
 
-cd {4}
 tmp=${{TMPDIR}}
 
 cp "{0}.in" ${{TMPDIR}}

@@ -8,13 +8,24 @@ wd = sys.argv[3]
 files = sys.argv[4]
 
 path = os.path.abspath(wd)
+himem = False
 
-queue = 'slurm'
-#queue = 'pbs'
+hostname = os.uname().nodename
+if "newblue" in hostname:
+    queue = 'pbs'
+    mem = 240 if himem else 64
+    workdir = True
+elif 'bc4' in hostname:
+    queue = 'slurm'
+    mem = 480 if himem else 120
+    workdir = True
+elif 'bp1' in hostname:
+    queue = 'slurm'
+    mem = 320 if himem else 150
+    workdir = False
+else:
+    raise ValueError("Unable to determine identity of host computer")
 
-workdir = True
-
-mem = 120
 
 if files != 'files':
     raise ValueError('only files supported')
@@ -32,7 +43,7 @@ for file in os.listdir():
 #PBS -N "{0}"
 #PBS -j oe
 #PBS -l walltime={1}:00:00
-#PBS -l select=1:ncpus={2}:mem={3}gb:mpiprocs={2}
+#PBS -l select=1:ncpus={2}:mem={3}gb
 """ 
     elif queue == 'slurm':
         output = """#!/bin/bash -l
@@ -52,18 +63,18 @@ for file in os.listdir():
 source ${{HOME}}/.bashrc
 export MKL_THREADING_LAYER=""
 conda activate p4env
+
+cd {4}
 """
 
     if not workdir:
         output += """
-
-cd {4}
 tmp=${{TMPDIR}}
 
-cp "{0}.in" ${{TMPDIR}}
-cp "{0}.xyz" ${{TMPDIR}}
+cp "{0}.in" $tmp
+cp "{0}.xyz" $tmp
 
-cd ${{TMPDIR}}
+cd $tmp
 """
     
     output += "\n\npsi4 -n {2} -i \"{0}.in\" -o \"{0}.out\"\n"
