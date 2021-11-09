@@ -187,14 +187,15 @@ def file_submissions(write=True, **kwargs):
             print(output)
 
 
-def run_directory():
-    for infile in os.listdir():
+def run_directory(path):
+    for infile in os.listdir(path):
         if not infile.endswith('.in'):
             continue
 
         filename = infile.split('.')[0]
+        outfilepath = os.path.join(path, filename + ".out")
 
-        if not os.path.isfile(filename + ".out"):
+        if not os.path.isfile(outfilepath):
             return True
 
     return False
@@ -221,7 +222,7 @@ cd $tmp
 
     output += """
 for file in *.in; do
-  if [ ! -f ${file%.in}.out ]]; then"""
+  if [[ ! -f ${file%.in}.out ]]; then"""
 
     output += generate_program_input("${file%.in}", **kwargs, single=False)
 
@@ -239,7 +240,7 @@ done
 def directory_submission(write=True, **kwargs):
     path = kwargs["path"]
 
-    if not run_directory():
+    if not run_directory(path):
         return
 
     filename = os.path.split(path)[-1]
@@ -258,7 +259,7 @@ def main(*args):
     if len(args) != 7:
         raise ValueError("Invalid number of input arguments ({})".format(narg))
 
-    names = ["nodes", "ncpu", "time", "wd", "files", "prog", "queue"]
+    names = ["prog", "wd", "nodes", "ncpu", "time", "files", "queue"]
 
     data = dict(zip(names, args))
     data["ncpu"] = int(data["ncpu"])
@@ -266,12 +267,14 @@ def main(*args):
 
     data["path"] = os.path.abspath(data["wd"])
 
-    hostname = os.uname().nodename
+    hostname = "bc4"
+    # hostname = os.uname().nodename
     data["hostname"] = hostname
     data["system"], data["mem"], data["workdir"] = get_host_specs(**data)
 
     files = data["files"]
     nodes = data["nodes"]
+    data["submit"] = False
 
     if files == "files":
         if nodes > 1:
