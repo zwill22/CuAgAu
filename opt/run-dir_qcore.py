@@ -14,8 +14,8 @@ queue = 'slurm'
 
 workdir = True
 
-mem = 480
-himem = True
+mem = 120
+himem = False
 
 if files != 'files':
     raise ValueError('only files supported')
