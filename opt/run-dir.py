@@ -15,12 +15,11 @@ def get_header(system, queue, *args):
     elif system == 'slurm':
         output = """#!/bin/bash -l
 #SBATCH -N {2}
-#SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task={3}
+#SBATCH --tasks-per-node={3}
 #SBATCH --time={1}
 #SBATCH --job-name="{0}"
 #SBATCH --error="{0}.e%j"
-#SBATCH --output="{0}.o%j
+#SBATCH --output="{0}.o%j"
 #SBATCH --mem={4}G
 """
         if queue not in ("default", "plong"):
@@ -48,10 +47,8 @@ def get_host_specs(hostname, queue, ncpu):
             raise ValueError("Too many cpus ({} > 16) for BC3".format(ncpu))
         if queue == "himem":
             mem = 240
-        elif queue == "default":
-            mem = 64
         else:
-            raise ValueError("Invalid queue for BC3: {}".format(queue))
+            mem = 64
         workdir = True
     elif 'bc4' in hostname:
         system = 'slurm'
@@ -59,10 +56,8 @@ def get_host_specs(hostname, queue, ncpu):
             raise ValueError("Too many cpus ({} > 28) for BC4".format(ncpu))
         if queue == "himem":
             mem = 480
-        elif queue == "default":
-            mem = 120
         else:
-            raise ValueError("Invalid queue for BC4: {}".format(queue))
+            mem = 120
         workdir = True
     elif 'bp1' in hostname:
         system = 'slurm'
@@ -78,12 +73,10 @@ def get_host_specs(hostname, queue, ncpu):
             mem = 350
             if ncpu > 32:
                 raise ValueError("Too many cpus for BP1 (plong): {} > 32".format(ncpu))
-        elif queue == "default":
+        else:
             mem = 150
             if ncpu > 32:
                 raise ValueError("Too many cpus for BP1: {} > 32".format(ncpu))
-        else: 
-            raise ValueError("Invalid queue for BP1: {}".format(queue))
         workdir = False
     else:
         raise ValueError("Unable to determine identity of host computer")
@@ -91,8 +84,13 @@ def get_host_specs(hostname, queue, ncpu):
     return system, mem, workdir
  
 
-def generate_program_input(prog, *args, export=True):
-    output = "\n\n"
+def generate_program_input(prog, system, *args, export=True):
+    if system == "slurm":
+        output = "\n\n"
+    elif system == "pbs":
+        output = "\n\n"
+    else:
+        raise ValueError("Invalid queueing system: {}".format(system))
     if prog == "qcore":
         output += "qcore -n {3} \"{0}.in\" &> \"{0}.out\""
     elif prog == "orca":
@@ -122,7 +120,7 @@ cp "{0}.xyz" $tmp
 cd $tmp
 """.format(filename)
     
-    output += generate_program_input(prog, filename, *args)
+    output += generate_program_input(prog, system, filename, *args)
 
     if not workdir:
         output += "\ncp {0}* {4}\ncd {4}\n".format(filename, *args)
@@ -180,7 +178,7 @@ def run_directory():
     return False
 
 
-def generate_dir_output(filename, system, queue, workdir, path, prog, *args):
+def generate_dir_output(filename, system, queue, workdir, prog, *args, path):
     output = get_header(system, queue, filename, *args, path)
     
     if not workdir:
@@ -198,11 +196,8 @@ cd $tmp
     output += """
 for file in *.in; do
   if [ ! -f ${file%.in}.out ]]; then"""
-    for arg in args:
-        print(arg)
 
-    print(prog)
-    output += generate_program_input(prog, "${file%.in}", *args)
+    output += generate_program_input(prog, system, "${file%.in}", *args)
 
     if not workdir:
         output += "cp ${{file%.in}}.* {}\ncd {}\n".format(path)
@@ -215,13 +210,13 @@ done
     return output  
 
 
-def directory_submission(system, path, *args, **kwargs):
+def directory_submission(system, queue, *args, path, **kwargs):
     if not run_directory():
         return
 
     filename = os.path.split(path)[-1]
 
-    output = generate_dir_output(filename, system, path, *args)
+    output = generate_dir_output(filename, system, queue, *args, path)
 
     write_and_submit(output, filename, system, **kwargs)
 
@@ -247,7 +242,8 @@ def main(*args):
     
     if print_level > 0:
         print("Hostname: {}".format(hostname))
-        print("Queueing system: {}".format(queue))
+        print("Queueing system: {}".format(system))
+        print("Queue: {}".format(queue))
         print("Program: {}".format(prog))
         print("Filepath: {}".format(path))
         if workdir:
@@ -268,7 +264,7 @@ def main(*args):
     elif files == "all":
         if print_level > 0:
             print(" -- Submitting all files using single submission")
-        directory_submission(system, path, queue, workdir, prog, time, nnodes, ncpu, mem, **kwargs)
+        directory_submission(system, queue, workdir, prog, time, nnodes, ncpu, mem, path, **kwargs)
     else:
         raise ValueError("Invalid file submmission method: {}".format(files))
  
