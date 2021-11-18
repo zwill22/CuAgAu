@@ -64,9 +64,9 @@ def get_host_specs(**data):
         if ncpu > 28:
             raise ValueError("Too many cpus ({} > 28) for BC4".format(ncpu))
         if queue == "himem":
-            mem = 18
+            mem = 17
         else:
-            mem = 5
+            mem = 4
         workdir = True
     elif 'bp1' in hostname:
         system = 'slurm'
@@ -267,14 +267,12 @@ def main(*args):
 
     data["path"] = os.path.abspath(data["wd"])
 
-    hostname = "bc4"
-    # hostname = os.uname().nodename
+    hostname = os.uname().nodename
     data["hostname"] = hostname
     data["system"], data["mem"], data["workdir"] = get_host_specs(**data)
 
     files = data["files"]
     nodes = data["nodes"]
-    data["submit"] = False
 
     if files == "files":
         if nodes > 1:
